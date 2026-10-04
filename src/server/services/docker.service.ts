@@ -65,9 +65,12 @@ export class DockerService {
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "-")
       .replace(/-+/g, "-")
-      .slice(0, 16);
-    const shortId = deploymentId.slice(0, 8);
-    return `app-${cleanName}-${shortId}.${this.sslipSuffix}`;
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 32)
+      .replace(/-+$/, "");
+    const cleanId = deploymentId.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const shortId = cleanId.slice(0, 8);
+    return `app-${cleanName || "service"}-${shortId}.${this.sslipSuffix}`;
   }
 
   /**

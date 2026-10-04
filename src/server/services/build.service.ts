@@ -36,10 +36,19 @@ export class BuildService {
    * Sanitizes and verifies path traversal safety
    */
   private validateDockerfilePath(workspaceDir: string, relativePath: string): string {
-    const normalized = path.normalize(relativePath).replace(/^(\.\/|\/)/, "");
-    const resolvedPath = path.resolve(workspaceDir, normalized);
+    if (path.isAbsolute(relativePath)) {
+      throw new Error(`Security Violation: Absolute Dockerfile path '${relativePath}' is not allowed.`);
+    }
 
-    if (!resolvedPath.startsWith(workspaceDir)) {
+    const normalized = path.normalize(relativePath);
+    if (normalized.startsWith("..") || normalized.split(path.sep).includes("..")) {
+      throw new Error(`Security Violation: Dockerfile path '${relativePath}' attempts path traversal.`);
+    }
+
+    const resolvedPath = path.resolve(workspaceDir, normalized);
+    const expectedPrefix = workspaceDir.endsWith(path.sep) ? workspaceDir : workspaceDir + path.sep;
+
+    if (!resolvedPath.startsWith(expectedPrefix) && resolvedPath !== workspaceDir) {
       throw new Error(`Security Violation: Dockerfile path '${relativePath}' attempts path traversal.`);
     }
 

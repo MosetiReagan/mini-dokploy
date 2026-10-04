@@ -47,8 +47,10 @@ class LogService extends EventEmitter {
           message,
         })
         .run();
-    } catch (err) {
-      console.error("[LogService] Failed to persist log entry to SQLite:", err);
+    } catch (err: any) {
+      if (err.code !== "SQLITE_CONSTRAINT_FOREIGNKEY") {
+        console.error("[LogService] Failed to persist log entry to SQLite:", err.message);
+      }
     }
 
     // Broadcast to WebSocket listeners
