@@ -94,6 +94,14 @@ flowchart TD
 
 ---
 
+### Why Docker Swarm Mode Over Kubernetes?
+A common architectural question for modern PaaS platforms (and the core thesis of Dokploy):
+1. **Lightweight Footprint**: Swarm is embedded directly inside the standard Docker engine binary. It requires **zero extra daemon processes** and consumes <50MB of RAM, compared to Kubernetes control planes (etcd, kube-apiserver, kube-scheduler, kube-controller-manager) which consume 1.5GB–3GB before running a single user container.
+2. **Built-in Overlay Networking & Mesh Routing**: Swarm's built-in VXLAN overlay network (`mini-dokploy-net`) provides cross-node service discovery and load balancing without needing third-party CNI plugins (Calico, Cilium, Flannel).
+3. **Zero-Downtime Rolling Updates (`Order: start-first`)**: Mini-Dokploy configures Swarm's `UpdateConfig` with `Order: "start-first"`. During redeployment, Swarm spins up the new container task, verifies health, and only terminates the old task once the new instance is serving traffic.
+
+---
+
 ## ⚖️ Tradeoffs & What I'd Build Next
 
 ### Architectural Tradeoffs
