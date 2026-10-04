@@ -16,6 +16,12 @@ import {
   Layers,
   Clock,
   Shield,
+  Activity,
+  CheckCircle2,
+  XCircle,
+  Sliders,
+  Code,
+  GitCommit,
 } from "lucide-react";
 
 export default function DeploymentDetail() {
@@ -28,7 +34,7 @@ export default function DeploymentDetail() {
     { id: deploymentId },
     {
       enabled: !!deploymentId,
-      refetchInterval: 3000, // Poll deployment state periodically
+      refetchInterval: 3000,
     }
   );
 
@@ -37,12 +43,22 @@ export default function DeploymentDetail() {
     { enabled: !!deploymentId }
   );
 
+  const { data: swarmInspect } = trpc.deployments.getServiceInspect.useQuery(
+    { id: deploymentId },
+    {
+      enabled: !!deployment?.dockerServiceId,
+      refetchInterval: 5000,
+    }
+  );
+
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [routePingStatus, setRoutePingStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
 
   const redeployMutation = trpc.deployments.redeploy.useMutation({
     onSuccess() {
       utils.deployments.get.invalidate({ id: deploymentId });
       utils.deployments.getLogs.invalidate({ id: deploymentId });
+      utils.deployments.getServiceInspect.invalidate({ id: deploymentId });
       setIsActionLoading(false);
     },
     onError() {
@@ -55,6 +71,19 @@ export default function DeploymentDetail() {
       router.push("/");
     },
   });
+
+  const handleTestRoute = async () => {
+    if (!deployment) return;
+    setRoutePingStatus("testing");
+    try {
+      const res = await fetch(`http://${deployment.subdomain}`, {
+        mode: "no-cors",
+      });
+      setRoutePingStatus("ok");
+    } catch {
+      setRoutePingStatus("fail");
+    }
+  };
 
   if (isLoading) {
     return (
@@ -92,6 +121,11 @@ export default function DeploymentDetail() {
     customLabels = JSON.parse(deployment.customLabelsJson || "{}");
   } catch {}
 
+  let envVars: Record<string, string> = {};
+  try {
+    envVars = JSON.parse(deployment.envVarsJson || "{}");
+  } catch {}
+
   return (
     <Layout>
       {/* Navigation & Header */}
@@ -107,6 +141,12 @@ export default function DeploymentDetail() {
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-white tracking-tight">{deployment.name}</h1>
             <StatusBadge status={deployment.status} />
+            {deployment.commitHash && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                <GitCommit className="w-3.5 h-3.5" />
+                {deployment.commitHash}
+              </span>
+            )}
           </div>
         </div>
 
@@ -125,7 +165,7 @@ export default function DeploymentDetail() {
                 isActionLoading || redeployMutation.isLoading ? "animate-spin text-blue-400" : ""
               }`}
             />
-            Redeploy
+            Redeploy (start-first)
           </button>
 
           <button
@@ -147,9 +187,23 @@ export default function DeploymentDetail() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         {/* Ingress URL */}
         <div className="p-4 rounded-xl border border-slate-800 bg-[#0c1222] md:col-span-2">
-          <div className="flex items-center space-x-2 text-xs font-semibold text-slate-400 mb-1">
-            <Globe className="w-4 h-4 text-blue-400" />
-            <span>Traefik Subdomain</span>
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-400 mb-1">
+            <span className="flex items-center space-x-1.5">
+              <Globe className="w-4 h-4 text-blue-400" />
+              <span>Traefik Subdomain Route</span>
+            </span>
+            <button
+              onClick={handleTestRoute}
+              disabled={routePingStatus === "testing"}
+              className="text-[11px] font-medium text-blue-400 hover:underline flex items-center gap-1"
+            >
+              <Activity className="w-3 h-3" />
+              {routePingStatus === "testing"
+                ? "Pinging..."
+                : routePingStatus === "ok"
+                ? "Route Active"
+                : "Test Ingress"}
+            </button>
           </div>
           <a
             href={`http://${deployment.subdomain}`}
@@ -171,21 +225,45 @@ export default function DeploymentDetail() {
           <p className="text-xs font-mono text-slate-200 truncate mt-1" title={deployment.repoUrl}>
             {deployment.repoUrl}
           </p>
-          <p className="text-[11px] text-slate-500 font-mono mt-0.5">branch: {deployment.branch}</p>
+          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+            branch: {deployment.branch} {deployment.commitMessage ? `• "${deployment.commitMessage}"` : ""}
+          </p>
         </div>
 
-        {/* Container Details */}
+        {/* Swarm Service Status */}
         <div className="p-4 rounded-xl border border-slate-800 bg-[#0c1222]">
           <div className="flex items-center space-x-2 text-xs font-semibold text-slate-400 mb-1">
             <Server className="w-4 h-4 text-emerald-400" />
-            <span>Port & Service ID</span>
+            <span>Swarm Service Tasks</span>
           </div>
-          <p className="text-xs font-mono text-slate-200 mt-1">Exposed Port: {deployment.exposedPort}</p>
+          <p className="text-xs font-mono text-slate-200 mt-1">
+            Replicas: {swarmInspect?.replicas ?? 1} / 1
+          </p>
           <p className="text-[11px] text-slate-500 font-mono mt-0.5 truncate" title={deployment.dockerServiceId || "Pending"}>
-            Swarm ID: {deployment.dockerServiceId || "orchestrating..."}
+            ID: {deployment.dockerServiceId || "orchestrating..."}
           </p>
         </div>
       </div>
+
+      {/* Environment Variables & Traefik Inspector */}
+      {Object.keys(envVars).length > 0 && (
+        <div className="mb-6 p-4 rounded-xl border border-slate-800 bg-[#0c1222]">
+          <div className="flex items-center space-x-2 text-xs font-semibold text-slate-300 mb-2">
+            <Sliders className="w-3.5 h-3.5 text-blue-400" />
+            <span>Configured Environment Variables</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(envVars).map(([k, v]) => (
+              <span
+                key={k}
+                className="px-2.5 py-1 rounded bg-[#070b14] border border-slate-800 text-xs font-mono text-slate-300"
+              >
+                <span className="text-blue-400">{k}</span>=<span className="text-slate-400">{v}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Error Notice */}
       {deployment.errorMessage && (
