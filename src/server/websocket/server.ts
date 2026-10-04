@@ -44,13 +44,13 @@ export function setupWebSocketServer(httpServer: Server) {
     ws.on("message", (raw) => {
       try {
         const msg = JSON.parse(raw.toString());
-        if (msg.type === "subscribe" && msg.deploymentId) {
+        if (msg.type === "subscribe" && typeof msg.deploymentId === "string" && msg.deploymentId) {
           if (subscribedDeploymentId) {
             removeSubscription(subscribedDeploymentId, ws);
           }
           subscribedDeploymentId = msg.deploymentId;
-          addSubscription(subscribedDeploymentId, ws);
-          ws.send(JSON.stringify({ type: "subscribed", deploymentId: subscribedDeploymentId }));
+          addSubscription(msg.deploymentId, ws);
+          ws.send(JSON.stringify({ type: "subscribed", deploymentId: msg.deploymentId }));
         }
       } catch (err) {
         // ignore malformed frame
