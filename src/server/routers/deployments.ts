@@ -60,12 +60,14 @@ export const deploymentRouter = router({
         branch: z.string().default("main"),
         exposedPort: z.number().int().min(1).max(65535).default(80),
         customLabels: z.record(z.string()).optional(),
+        envVars: z.record(z.string()).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const deploymentId = `dep_${crypto.randomUUID()}`;
       const subdomain = dockerService.generateSubdomain(input.name, deploymentId);
       const customLabelsJson = JSON.stringify(input.customLabels || {});
+      const envVarsJson = JSON.stringify(input.envVars || {});
 
       // 1. Persist initial deployment record
       const now = new Date();
@@ -80,6 +82,7 @@ export const deploymentRouter = router({
           exposedPort: input.exposedPort || 80,
           subdomain,
           customLabelsJson,
+          envVarsJson,
           status: "pending",
           createdAt: now,
           updatedAt: now,
@@ -98,6 +101,7 @@ export const deploymentRouter = router({
             exposedPort: input.exposedPort || 80,
             subdomain,
             customLabels: input.customLabels,
+            envVars: input.envVars,
             isRedeploy: false,
           })
           .catch((err) => {
@@ -134,6 +138,11 @@ export const deploymentRouter = router({
         parsedLabels = JSON.parse(deployment.customLabelsJson || "{}");
       } catch {}
 
+      let parsedEnv: Record<string, string> = {};
+      try {
+        parsedEnv = JSON.parse(deployment.envVarsJson || "{}");
+      } catch {}
+
       // Reset to pending
       db.update(deployments)
         .set({ status: "pending", errorMessage: null, updatedAt: new Date() })
@@ -151,6 +160,7 @@ export const deploymentRouter = router({
             exposedPort: deployment.exposedPort,
             subdomain: deployment.subdomain,
             customLabels: parsedLabels,
+            envVars: parsedEnv,
             isRedeploy: true,
           })
           .catch((err) => {
@@ -205,5 +215,28 @@ export const deploymentRouter = router({
       }
 
       return logService.getLogs(deployment.id);
+    }),
+
+  getServiceInspect: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const deployment = db
+        .select()
+        .from(deployments)
+        .where(and(eq(deployments.id, input.id), eq(deployments.userId, ctx.user.id)))
+        .get();
+
+      if (!deployment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Deployment not found or access denied.",
+        });
+      }
+
+      if (!deployment.dockerServiceId) {
+        return null;
+      }
+
+      return dockerService.getServiceDetails(deployment.dockerServiceId);
     }),
 });
