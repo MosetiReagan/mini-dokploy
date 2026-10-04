@@ -1,0 +1,76 @@
+version: "3.8"
+
+networks:
+  mini-dokploy-net:
+    external: true
+
+volumes:
+  mini-dokploy-data:
+    driver: local
+
+services:
+  # Traefik Reverse Proxy (Docker Swarm Mode)
+  traefik:
+    image: traefik:v3.1
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.swarmmode=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=mini-dokploy-net"
+      - "--entrypoints.web.address=:80"
+      - "--log.level=INFO"
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 8080
+        published: 8080
+        mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - mini-dokploy-net
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  # Mini-Dokploy Control Plane Service
+  mini-dokploy:
+    image: mini-dokploy:latest
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=/data/mini-dokploy.db
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - TRAEFIK_NETWORK=mini-dokploy-net
+      - SSIP_HOST_SUFFIX=127.0.0.1.sslip.io
+    ports:
+      - target: 3000
+        published: 3000
+        mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - mini-dokploy-data:/data
+    networks:
+      - mini-dokploy-net
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=mini-dokploy-net"
+        - "traefik.http.routers.mini-dokploy.rule=Host(`mini-dokploy.127.0.0.1.sslip.io`)"
+        - "traefik.http.routers.mini-dokploy.entrypoints=web"
+        - "traefik.http.services.mini-dokploy.loadbalancer.server.port=3000"
+      restart_policy:
+        condition: on-failure
