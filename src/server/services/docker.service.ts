@@ -16,6 +16,7 @@ export interface CreateServiceOptions {
   subdomain: string;
   exposedPort: number;
   customLabels?: Record<string, string>;
+  envVars?: Record<string, string>;
 }
 
 export class DockerService {
@@ -124,14 +125,24 @@ export class DockerService {
     }
 
     try {
+      const envArray = options.envVars
+        ? Object.entries(options.envVars).map(([k, v]) => `${k}=${v}`)
+        : [];
+
       const serviceSpec = {
         Name: serviceName,
         TaskTemplate: {
           ContainerSpec: {
             Image: options.imageTag,
             Labels: labels,
+            Env: envArray.length > 0 ? envArray : undefined,
           },
           Networks: [{ Target: this.networkName }],
+          Resources: {
+            Limits: {
+              MemoryBytes: 512 * 1024 * 1024, // 512 MB default memory limit
+            },
+          },
           RestartPolicy: {
             Condition: "on-failure" as const,
             Delay: 5000000000, // 5s in nanoseconds
@@ -142,6 +153,16 @@ export class DockerService {
           Replicated: {
             Replicas: 1,
           },
+        },
+        UpdateConfig: {
+          Parallelism: 1,
+          Delay: 5000000000, // 5s
+          FailureAction: "rollback" as const,
+          Order: "start-first" as const, // Zero-downtime rolling deployment
+        },
+        RollbackConfig: {
+          Parallelism: 1,
+          Order: "stop-first" as const,
         },
         Labels: labels,
       };
@@ -201,6 +222,10 @@ export class DockerService {
         networkName: this.networkName,
       });
 
+      const envArray = options.envVars
+        ? Object.entries(options.envVars).map(([k, v]) => `${k}=${v}`)
+        : inspectData.Spec?.TaskTemplate?.ContainerSpec?.Env || [];
+
       const updatedSpec = {
         ...inspectData.Spec,
         TaskTemplate: {
@@ -209,7 +234,14 @@ export class DockerService {
             ...inspectData.Spec.TaskTemplate.ContainerSpec,
             Image: options.imageTag,
             Labels: labels,
+            Env: envArray,
           },
+        },
+        UpdateConfig: {
+          Parallelism: 1,
+          Delay: 5000000000,
+          FailureAction: "rollback",
+          Order: "start-first",
         },
         Labels: labels,
       };
@@ -217,7 +249,7 @@ export class DockerService {
       await service.update({ version }, updatedSpec);
       await logService.emitLog(
         options.deploymentId,
-        `[Docker Swarm] Service ${serviceId} updated to image: ${options.imageTag}`,
+        `[Docker Swarm] Service ${serviceId} updated to image: ${options.imageTag} (rolling update: start-first)`,
         "success"
       );
     } catch (err: any) {
@@ -227,6 +259,49 @@ export class DockerService {
         "error"
       );
       throw err;
+    }
+  }
+
+  /**
+   * Retrieves inspection details for a Swarm service
+   */
+  public async getServiceDetails(serviceId: string): Promise<any> {
+    if (serviceId.startsWith("mock-srv-")) {
+      return {
+        id: serviceId,
+        mock: true,
+        replicas: 1,
+        updateStatus: "completed",
+        tasks: [{ id: "mock-task-1", state: "running", desiredState: "running" }],
+      };
+    }
+
+    try {
+      const service = this.docker.getService(serviceId);
+      const inspectData = await service.inspect();
+      let tasks: any[] = [];
+      try {
+        tasks = await this.docker.listTasks({
+          filters: { service: [serviceId] },
+        });
+      } catch {}
+
+      return {
+        id: serviceId,
+        name: inspectData.Spec?.Name,
+        image: inspectData.Spec?.TaskTemplate?.ContainerSpec?.Image,
+        labels: inspectData.Spec?.Labels,
+        replicas: inspectData.Spec?.Mode?.Replicated?.Replicas || 1,
+        tasks: tasks.map((t) => ({
+          id: t.ID,
+          nodeId: t.NodeID,
+          state: t.Status?.State,
+          desiredState: t.DesiredState,
+          message: t.Status?.Message,
+        })),
+      };
+    } catch (err: any) {
+      return { id: serviceId, error: err.message };
     }
   }
 
