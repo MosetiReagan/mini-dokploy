@@ -57,6 +57,10 @@ describe("tRPC End-to-End Procedure Testing", () => {
       customLabels: {
         "env": "production",
       },
+      envVars: {
+        "NODE_ENV": "production",
+        "DATABASE_URL": "sqlite:///app.db",
+      },
     });
 
     expect(deployment.id).toBeDefined();
@@ -72,5 +76,6 @@ describe("tRPC End-to-End Procedure Testing", () => {
     const fetched = await caller.deployments.get({ id: deployment.id });
     expect(fetched.name).toBe("node-api");
     expect(fetched.exposedPort).toBe(3000);
+    expect(fetched.envVarsJson).toContain("DATABASE_URL");
   });
 });

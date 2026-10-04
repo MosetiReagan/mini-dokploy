@@ -56,4 +56,12 @@ describe("DockerService & Traefik Label Engine", () => {
 
     expect(serviceId).toContain("dokploy-");
   });
+
+  it("retrieves inspect details for a Swarm service", async () => {
+    const details = await dockerService.getServiceDetails("mock-srv-dokploy-12345");
+    expect(details.id).toBe("mock-srv-dokploy-12345");
+    expect(details.replicas).toBe(1);
+    expect(details.tasks).toBeDefined();
+    expect(details.tasks.length).toBeGreaterThan(0);
+  });
 });
