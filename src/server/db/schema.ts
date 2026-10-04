@@ -42,6 +42,9 @@ export const deployments = sqliteTable("deployments", {
     .default("pending"),
   dockerServiceId: text("docker_service_id"),
   imageTag: text("image_tag"),
+  commitHash: text("commit_hash"),
+  commitMessage: text("commit_message"),
+  envVarsJson: text("env_vars_json").default("{}"),
   errorMessage: text("error_message"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .default(sql`(strftime('%s', 'now'))`)

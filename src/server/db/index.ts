@@ -64,4 +64,9 @@ sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
 `);
 
+// Safe non-destructive column additions
+try { sqlite.exec("ALTER TABLE deployments ADD COLUMN commit_hash TEXT;"); } catch {}
+try { sqlite.exec("ALTER TABLE deployments ADD COLUMN commit_message TEXT;"); } catch {}
+try { sqlite.exec("ALTER TABLE deployments ADD COLUMN env_vars_json TEXT DEFAULT '{}';"); } catch {}
+
 export const db = drizzle(sqlite, { schema });
