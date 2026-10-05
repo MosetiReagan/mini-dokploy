@@ -57,6 +57,9 @@ else
   echo ""
   echo "  • Control Plane: http://localhost:3000"
   echo "  • Demo Account:  admin@dokploy.local / dokploy123"
-  echo ""
-  npm run dev
+  if [ ! -d ".next" ]; then
+    echo "Compiling Next.js pages..."
+    npm run build
+  fi
+  npm run start
 fi
