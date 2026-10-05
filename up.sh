@@ -57,9 +57,15 @@ else
   echo ""
   echo "  • Control Plane: http://localhost:3000"
   echo "  • Demo Account:  admin@dokploy.local / dokploy123"
-  if [ ! -d ".next" ]; then
-    echo "Compiling Next.js pages..."
+  if [ ! -d ".next" ] || [ ! -f "dist/server.cjs" ]; then
+    echo "Compiling Next.js application & server bundles..."
     npm run build
+  fi
+  # Clean up any stale process occupying port 3000
+  if lsof -ti :3000 &> /dev/null; then
+    echo "Stopping existing instance on port 3000..."
+    kill -9 $(lsof -ti :3000) 2>/dev/null || true
+    sleep 1
   fi
   npm run start
 fi

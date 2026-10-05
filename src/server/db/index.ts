@@ -4,6 +4,18 @@ import fs from "fs";
 import path from "path";
 import * as schema from "./schema";
 
+// Retain statement references to protect against Node 24 V8 weak callback assertion
+const statementRegistry = ((globalThis as any).__betterSqlite3Statements ||= new Set());
+const origPrepare = (Database.prototype as any).prepare;
+if (!(Database.prototype as any).__preparePatched) {
+  (Database.prototype as any).prepare = function (this: any, ...args: any[]) {
+    const stmt = origPrepare.apply(this, args);
+    statementRegistry.add(stmt);
+    return stmt;
+  };
+  (Database.prototype as any).__preparePatched = true;
+}
+
 const dbPath = process.env.DATABASE_URL || "./data/mini-dokploy.db";
 const dbDir = path.dirname(path.resolve(dbPath));
 

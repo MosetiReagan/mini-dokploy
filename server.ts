@@ -1,9 +1,6 @@
 import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
-import { setupWebSocketServer } from "./src/server/websocket/server";
-import "./src/server/db"; // ensure database and schema DDL are initialized
-
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "3000", 10);
@@ -14,6 +11,10 @@ const handle = app.getRequestHandler();
 async function startServer() {
   try {
     await app.prepare();
+
+    // Initialize database schema and websocket services after Next.js isolate boots
+    await import("./src/server/db");
+    const { setupWebSocketServer } = await import("./src/server/websocket/server");
 
     const server = createServer(async (req, res) => {
       try {
